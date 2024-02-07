@@ -6,7 +6,7 @@ This short course is designed for participants with basic statistics and genetic
 
 All short course materials and extra links are provided here.
 
-# Instructors:
+## Instructors:
 - Ting Ye (University of Washington)
 - Jingshu Wang (University of Chicago) jingshuw@uchicago.edu
 - Neil M Davis (University College London)
