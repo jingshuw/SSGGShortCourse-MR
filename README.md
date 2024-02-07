@@ -5,7 +5,7 @@ This short course is designed for participants with basic statistics and genetic
 <img width="468" alt="image" src="https://github.com/jingshuw/SSGGShortCourse-MR/assets/12014815/8e95bde5-5674-4c64-a913-93318da4a371">
 
 # Instructors:
-Ting Ye (University of Washington)
-Jingshu Wang (University of Chicago)
-Neil M Davis (University College London)
-Jean Morrison (University of Michigan)
+- Ting Ye (University of Washington)
+- Jingshu Wang (University of Chicago)
+- Neil M Davis (University College London)
+- Jean Morrison (University of Michigan)
