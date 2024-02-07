@@ -1,8 +1,8 @@
 # ASA-SSGG Short Course 2024: An Introduction to Mendelian Randomization
 
-This short course is designed for participants with basic statistics and genetics/genomics background, who are interested in cutting-edge developments in Mendelian Randomization, including both method development and application. It contains four lectures covering the foundational concepts and assumptions of MR, recent state-of-the-art methods, principles in designing an MR study, and connections between MR and related fields. 
+<img width="800" alt="image" src="https://github.com/jingshuw/SSGGShortCourse-MR/assets/12014815/8e95bde5-5674-4c64-a913-93318da4a371">
 
-<img width="600" alt="image" src="https://github.com/jingshuw/SSGGShortCourse-MR/assets/12014815/8e95bde5-5674-4c64-a913-93318da4a371">
+This short course is designed for participants with basic statistics and genetics/genomics background, who are interested in cutting-edge developments in Mendelian Randomization, including both method development and application. It contains four lectures covering the foundational concepts and assumptions of MR, recent state-of-the-art methods, principles in designing an MR study, and connections between MR and related fields. 
 
 All short course materials and extra links are provided here.
 
