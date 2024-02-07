@@ -8,7 +8,7 @@ All short course materials and extra links are provided here.
 
 # Instructors:
 - Ting Ye (University of Washington)
-- Jingshu Wang (University of Chicago) wangjingshususan@gmail.com
+- Jingshu Wang (University of Chicago) jingshuw@uchicago.edu
 - Neil M Davis (University College London)
 - Jean Morrison (University of Michigan)
 
