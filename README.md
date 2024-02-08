@@ -4,7 +4,7 @@
 
 This short course is designed for participants with basic statistics and genetics/genomics background, who are interested in cutting-edge developments in Mendelian Randomization, including both method development and application. It contains four lectures covering the foundational concepts and assumptions of MR, recent state-of-the-art methods, principles in designing an MR study, and connections between MR and related fields. 
 
-All short course materials and extra links are provided here.
+All short course materials and extra links will be provided here.
 
 ## Instructors:
 - Ting Ye (University of Washington)
