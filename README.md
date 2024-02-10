@@ -7,9 +7,9 @@ This short course is designed for participants with basic statistics and genetic
 All short course materials and extra links will be provided here.
 
 ## Instructors:
-- Ting Ye (University of Washington)
+- Ting Ye (University of Washington) tingye1@uw.edu
 - Jingshu Wang (University of Chicago) jingshuw@uchicago.edu
-- Neil M Davis (University College London)
-- Jean Morrison (University of Michigan)
+- Neil M Davis (University College London) Neil.Davies@bristol.ac.uk
+- Jean Morrison (University of Michigan) jvmorr@umich.edu
 
 Please contact any of us regarding comments or questions.
