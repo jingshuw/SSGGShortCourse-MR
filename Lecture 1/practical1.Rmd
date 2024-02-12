@@ -1,0 +1,110 @@
+---
+title: "Practical 1: basic workflow for two sample MR"
+author: "Ting Ye"
+subtitle: "SSGG Short Course: A Introduction to Mendelian Randomization, February 12, 2024"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+This exercise demonstrates the basic workflow of two-sample summary data Mendelian randomization of LDL-C on CAD.
+
+### 0. Preparation -- install and load package
+
+
+Download and Install the `TwoSampleMR`, `mr.divw`, `mr.raps` packages: uncomment and run the code below. Load the installed packages.
+
+```{r,message=F}
+# library(remotes)
+# install_github("MRCIEU/TwoSampleMR") # need to install before load the package
+library(TwoSampleMR)
+
+# install_github("tye27/mr.divw") # need to install before load the package
+library(mr.divw)
+
+# install_github("qingyuanzhao/mr.raps") # need to install before load the package
+library(mr.raps)
+
+```
+
+
+Run the code below to obtain a data frame of the available GWAS summary datasets in the database.
+
+```{r}
+#ao <- available_outcomes()
+```
+
+### 1. Find the traits for the GWAS datasets "ieu-a-2" and "ieu-a-7". 
+
+
+```{r}
+#subset(ao, id %in% c("ieu-a-2", "ieu-a-7"))$trait
+```
+
+
+### 2. Select IVs for the exposure from "ieu-a-2" 
+
+Using significance threshold p1 = 5e-08, with default setting in LD clumping. Try changing the p-value threshold to 1e-3, see how many IVs are left.
+
+```{r}
+exposure_dat <- extract_instruments("ieu-a-2", p1 = 5e-08, clump = TRUE, r2 = 0.001, kb = 10000)
+```
+
+### 3. Extract IVs for the outcome 
+
+```{r}
+outcome_dat <- extract_outcome_data(exposure_dat$SNP, "ieu-a-7")
+```
+
+
+### 4. Harmonize the effect sizes
+
+```{r}
+dat <- harmonise_data(exposure_dat, outcome_dat)
+```
+
+
+### 5. Run default MR analyses using the TwoSampleMR
+
+```{r}
+out <- mr(dat,method_list = c("mr_ivw"))
+out
+mr_scatter_plot(out, dat)
+
+# Q-statistic 
+mr_heterogeneity(dat)
+```
+
+
+### 6. Run dIVW using mr.divw
+
+```{r}
+divw.res<-with(dat,mr.divw(beta.exposure, beta.outcome, se.exposure, se.outcome))
+
+#dIVW estimate and SE
+round(c(divw.res$beta.hat,divw.res$beta.se),2)
+
+# F-statistic
+round(divw.res$condition/sqrt(divw.res$n.IV),2)
+
+```
+
+
+### 7. Run MR-raps using mr.raps
+
+```{r}
+mr.raps_res<-mr.raps(dat,over.dispersion = F)
+
+# point estimate and SE
+round(c(mr.raps_res$beta.hat,mr.raps_res$beta.se),2)
+
+```
+
+### 7. Interpretation of the MR estimate
+
+LDL-C is continuous and was standardized prior to GWAS. 
+CAD is binary and logistic regression was used in GWAS. Thus, the MR estimate indicates a 57\% (exp(0.45)-1) increase in the odds of CAD per 1-SD increase in LDL-C level.
+
