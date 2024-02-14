@@ -1,0 +1,132 @@
+---
+title: "Practical 2"
+output:
+  html_document:
+    df_print: paged
+---
+
+In this practical session, we use MR to evaluate the causal effect of HDL choleterol on CAD, with a focus on the pleiotropy issue.
+
+
+# Package installation
+```{r}
+# library(devtools)
+# devtools::install_github('MRCIEU/TwoSampleMR')
+
+# install_github("qingyuanzhao/mr.raps") ## if you have problem installing the rsnps dependence package for mr.raps, you can try:
+# install_github("ropensci/rsnps")
+
+# install_github("jingshuw/GRAPPLE")
+# install_github("rondolab/MR-PRESSO")
+# install.packages("MendelianRandomization")
+```
+
+# Data proprocessing
+
+We use TwoSampleMR to obtain the GWAS summary statistics as introduced in Lecture 1.
+
+```{r}
+library(TwoSampleMR)
+## Exposure trait: GLGC HDL-cholesterol GWAS data (2013)
+exposure_dat <- extract_instruments("ieu-a-780", p1 = 1e-8, clump = T)
+## Outcome trait: CAD data as in practical session 1
+outcome_dat <- extract_outcome_data(exposure_dat$SNP, "ieu-a-7")
+dat <- harmonise_data(exposure_dat, outcome_dat)
+```
+
+Note: TwoSampleMR package provides the easiest way to start your MR analysis, but may not be the best choice:
+
+- This approach can possibly suffer from p-value selection bias even if we use genome-wide significance threshold. To avoid SNP selection bias, especially if we want to lower the p-value threshold and include weaker SNPs, one may use a three-sample MR design, as will be discussed in Lecture 4
+
+- This approach does not support estimating the shared SNP correlation matrix across traits when there are overlapping samples. We will need the whole GWAS summary statistics for this purpose. 
+
+- Some methods, such as CAUSE, MRMix and GRAPPLE, may prefer their own data preprocessing steps introduced in the tutorials of these methods 
+
+
+# Diagnosis for pleiotropic effects
+
+## Q statistics
+```{r}
+mr_heterogeneity(dat)
+```
+
+The large Q statistics indicates existance of pleiotropic effects.
+
+## Residual plot 
+
+We compare $t_j$ with standard Gaussian quantiles, showing $|t_j|$
+```{r}
+# install_github("ropensci/rsnps")
+# install_github("qingyuanzhao/mr.raps")
+library(mr.raps)
+out1 <- mr.raps(dat, over.dispersion = F)
+```
+
+The residual plot indicates pervasive pleiotropy
+
+## GRAPPLE visualization to check for correlated pleiotropy
+
+```{r}
+library(GRAPPLE)
+data <- data.frame(SNP = dat$SNP, gamma_exp1 = dat$beta.exposure,
+                   se_exp1 = dat$se.exposure, gamma_out1 = dat$beta.outcome,
+                   se_out1 = dat$se.outcome)
+row.names(data) <- data$SNP
+diagnosis <- findModes(data, map.marker = T)
+diagnosis$p
+```
+
+Above figure shows possible pleiotropic pathways that are related to other lipid traits
+
+
+# Comparison of results between different methods
+
+## Five methods that are available in the TwoSampleMR package
+IVW, Weighted median, MR-Egger, Weighted mode (MBE), MR-RAPS
+
+```{r}
+out <- mr(dat, method_list = c("mr_ivw", "mr_weighted_median", "mr_egger_regression",
+                               "mr_weighted_mode", "mr_raps"))
+out[, -(1:4)]
+#mr_scatter_plot(out, dat)
+```
+
+## MR-PRESSO
+
+```{r}
+## devtools::install_github("rondolab/MR-PRESSO")
+library(MRPRESSO)
+
+result <- mr_presso(BetaOutcome = "beta.outcome", BetaExposure = "beta.exposure",
+          SdOutcome = "se.outcome", SdExposure = "se.exposure", data = dat,
+          OUTLIERtest = T, DISTORTIONtest = T)
+outlier.idx <- result$`MR-PRESSO results`$`Distortion Test`$`Outliers Indices`
+outlier.idx
+result$`Main MR results`
+
+```
+
+Which points are detected as outliers?
+```{r}
+library(ggplot2)
+outliers <- dat[outlier.idx, c('beta.exposure', 'beta.outcome')]
+outliers <- sign(outliers[, 1]) * outliers
+mr_scatter_plot(out, dat)[[1]] + geom_point(data = outliers, aes(x = beta.exposure, 
+                                                y = beta.outcome), colour = "red",
+                                            size = 3, shape = 1)
+```
+
+
+## Contamination mixture
+```{r}
+library(MendelianRandomization)
+MR_input <- mr_input(bx = dat$beta.exposure,
+                   bxse = dat$se.exposure, by = dat$beta.outcome,
+                   byse = dat$se.outcome)
+result <- mr_conmix(MR_input)
+result
+```
+The confidence interval for the HDL-C effect is $[-0.44, -0.35]\cup [-0.23, 0.2]$ which contains $0$.
+
+We can adjust for other lipid traits using multivariable MR. Examples will be shown in Lecture 4.
+
