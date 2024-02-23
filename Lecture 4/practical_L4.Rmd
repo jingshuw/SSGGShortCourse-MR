@@ -1,0 +1,363 @@
+---
+title: "Designing Your MR Study Practical"
+author: "Jean Morrison"
+date: "2024-02-23"
+output:
+  pdf_document: default
+  html_document: default
+bibliography: practical.bib
+---
+
+## Introduction
+
+In this practical, we will walk through choices and considerations we might encounter in an MR analysis of the effect of blood pressure on risk of stroke. Some of the content of this practical is based on the two papers, @georgakis_genetically_2020 and @georgakis_mendelian_2021.
+
+## Locating Data Sources
+
+The first step is to identify GWAS summary statistics for exposure and outcome. Two catalogs of GWAS summary statistics:
+
+- [NHGRI GWAS Catalog](https://www.ebi.ac.uk/gwas/summary-statistics)
+- [MRC-IEU GWAS Catalog](https://gwas.mrcieu.ac.uk/)
+
+I find the NGHRI GWAS Catalog slightly easier to use for discovering data sources, but the MRC-IEU Catalog is conveniently linked with the R package [ieugwasr](https://mrcieu.github.io/ieugwasr/) which makes querying and extracting data very easy. The [gwasrapidd](https://rmagno.eu/gwasrapidd/) package can be used for interfacing with the GWAS Catalog, but this package is lacking some of the functionalities of `ieugwasr`. 
+
+### Outcome Data
+
+If you go to the NHGRI Catalog and search for "Stroke" you will find the [trait entry for stroke](https://www.ebi.ac.uk/gwas/efotraits/EFO_0000712), which looks like this:
+
+![Entry for Stroke on GWAS Catalog](gwas_catalog_stroke.png)
+
+As of the time of this writing, there are 55 sets of full summary statistics for stroke. 
+
+Clicking on the "Full summary statistics" tab gives a list of all available studies. Sort the table largest to smallest by number of associations. This should look something like 
+
+![Entry for Stroke on GWAS Catalog](gwas_catalog_stroke_studies.png)
+The most well-powered study is a multi-ancestry meta analysis. However, using multi-ancestry data in MR could cause problems due to mismatching populations in exposure and outcome data. Therefore, we will go with the second result which is from the same paper and uses only the European ancestry subset. 
+
+### Exposure Data
+
+Next, we need to find GWAS results for blood pressure. There are many blood pressure related phenotypes we could look for including hypertension status, systolic, and diastolic blood pressure. It is better for us to select a continuous exposure variable (so not hypertension status). 
+
+If we examine the available studies for systolic blood pressure, we find that there are two large European ancestry studies available, one by [Surendran et al](https://www.ebi.ac.uk/gwas/studies/GCST90000062)[@surendran_discovery_2020], and one by [Evangelou et al](https://www.ebi.ac.uk/gwas/studies/GCST006624)[@Evangelou2018]. The Surendran et al. study uses exome chip and exome sequencing data while the Evangelou et al. study uses a genome-wide genotyping array, imputed to around 8 million variants. 
+
+Unfortunately for us, both studies use blood pressure adjusted for blood pressure medication and both studies adjust for BMI in the GWAS. Because BMI is heritable, this could introduce some collider bias if there are common causes of BMI and stroke. @georgakis_genetically_2020 use the Evangelou et al. data and address the risk of collider bias by performing a sensitivity analysis using results only from UK Biobank that do not adjust for BMI or medication use. A recently proposed alternative solution is to perform multivariable MR adjusting for BMI [@gilbody_multivariable_2022]. If all effects are linear, this strategy will recover the effect of SBP on stroke but will not provide a valid estimate of the effect of BMI on stroke. 
+
+Another thing we need to pay attention to in the exposure data is the unit of the measurement. In the Evangelou data, SBP and DBP are untransformed, so our effects will be interpretable as effect per unit increase in SBP or DBP. In the Surendran et al. paper, each constituent study inverse normalized the phenotype before performing GWAS. Then all of the studies were meta analyzed together. If all of the studies had the same standard deviation of SBP, the resulting unit would be whatever that standard deviation is. However, each study likely has a somewhat different distribution of blood pressures, so it is not exactly clear what the resulting unit of the estimate is.
+
+For our example, we will move on using the Evangelou data. 
+
+## Instrument Selection
+
+Conveniently, both the Malik et al. stroke study and the Evangelou et al. blood pressure study are contained in the MRC-IEU database, so we can use the `ieugwasr` package to query these datasets. You can also find some of the processed data sets below on the course website. 
+
+### Genome-Wide Instrument Selection
+
+It would be nice to have a separate exposure study for instrument selection, but the Evangelou et al. study is a meta analysis and includes most other studies measuring SBP. This means that we will need to do in-sample selection and accept that we will have some bias from winner's curse. Fortunately, there is not very much overlap in samples between the exposure and outcome studies, so this bias will be towards zero making the estimate a little bit conservative. We will pull data for both systolic and diastolic blood pressure, for now we will simply analyze these two phenotypes in parallel. In a later section, we will look at them together. 
+
+```{r, message = FALSE, warning = FALSE}
+library(ieugwasr)
+library(TwoSampleMR)
+library(dplyr)
+library(qqman)
+library(ggplot2)
+library(GRAPPLE)
+library(MVMR)
+```
+
+```{r, eval = FALSE}
+sbp_id <- "ieu-b-38" # Systolic blood pressure
+dbp_id <- "ieu-b-39" # Diastolic blood pressure
+stroke_id <- "ebi-a-GCST006906" # Stroke
+
+# extract top hits using default LD pruning settings
+# this uses extract_instruments from 
+# TwoSampleMR but tophits from ieugwasr would also work
+sbp_dat <- extract_instruments(outcomes = sbp_id, p1 = 5e-8)
+dbp_dat <- extract_instruments(outcomes = dbp_id, p1 = 5e-8)
+
+dim(sbp_dat)
+#[1] 461  15
+dim(dbp_dat)
+#[1] 460  15
+
+head(sbp_dat)
+
+# extract outcome data and merge
+stroke_sbp_dat <- extract_outcome_data(outcomes = stroke_id, snps = sbp_dat$SNP)
+sbp_stroke_full_data <- harmonise_data(exposure_dat = sbp_dat, 
+                                           outcome_dat = stroke_sbp_dat)
+
+
+stroke_dbp_dat <- extract_outcome_data(outcomes = stroke_id, snps = dbp_dat$SNP)
+dbp_stroke_full_data <- harmonise_data(exposure_dat = dbp_dat, 
+                                           outcome_dat = stroke_dbp_dat)
+
+
+```
+
+
+The data frames created in the previous code are available on the course website. You can download them and load them in using
+
+```{r}
+sbp_stroke_full_data <- readRDS("sbp_stroke_full_data.RDS")
+dbp_stroke_full_data <- readRDS("dbp_stroke_full_data.RDS")
+```
+
+
+ @georgakis_genetically_2020 also look at a set of instruments in promoters or enhanchers for genes targeted by beta blockers or calcium channel blockers, but we will not include this in today's tutorial.
+
+### Per-Variant Screening
+
+Two common variant screening strategies are Steiger filtering, which removes variants that are more strongly associated with the outcome than with the exposure and filtering on contribution to the Q-statistic, which measures heterogeneity. 
+
+Steiger filtering is usually a good idea but could give misleading results if there is differential measurement error or certain arrangements of strong confounding. I believe that the supplied prevalence does not have a very big effect on the results, but it may be worth looking at multiple values.
+
+```{r}
+sbp_stroke_full_data <- sbp_stroke_full_data %>%
+                        mutate(units.outcome = "log odds", 
+                               ncase.outcome = 40585,
+                               ncontrol.outcome =406111, 
+                               prevalence.outcome = 0.01) %>%
+                        steiger_filtering()
+table(sbp_stroke_full_data$steiger_dir)
+
+dbp_stroke_full_data <- dbp_stroke_full_data %>%
+                        mutate(units.outcome = "log odds", 
+                               ncase.outcome = 40585,
+                               ncontrol.outcome =406111, 
+                               prevalence.outcome = 0.01) %>%
+                        steiger_filtering()
+table(dbp_stroke_full_data$steiger_dir)
+```
+
+
+Outlier removal by filtering on contribution to the Q-statistic can be useful when most of the data are homogeneous and there are a few outliers. 
+However, if there is complex horizontal pleiotropy, outlier removal could remove the wrong variants. It can also give a false impression of confidence, as definitionally, after outlier removal, all of the remaining variants are in agreement. It is a good idea to look at the data and the distribution of the Q-statistic contributions before removing outliers. It is also a good idea to compare outlier filtered results (if you are using them) to alternative methods that retain variants but model heterogeneity such such as MR-RAPS/GRAPPLE or mixture methods like CAUSE or MR-MIX. Outlier filtering should be performed after Steiger filtering. 
+
+The easiest way I know to extract the Q-statistic is using the (non-exported) `mr_all` function in `TwoSampleMR`. This function will also calculate a variety of 2SMR estimators. A common threshold for filtering on the contribution to the Q-statistic is a p-value threshold of 0.05. Removing all variants above this threshold will guarantee that the remaining variants have a non-sgnificant total Q-statistic.
+
+```{r}
+mr_all_sbp <- sbp_stroke_full_data %>% 
+              filter(steiger_dir == TRUE) %>% 
+              TwoSampleMR:::mr_all()
+
+head(mr_all_sbp$outliers)
+qq(mr_all_sbp$outliers$Qpval)
+```
+
+Looking at the distribution of Q-statistic contributions shows that we have overdispersion in all variants and not just a few large outliers, so this application may not be a good candidate for outlier removal. We can also look at the data colored by whether a variant is removed by Steiger filtering or by Q-statistic based outlier removal. 
+
+```{r}
+left_join( sbp_stroke_full_data, mr_all_sbp$outliers) %>% 
+  mutate(status = case_when(steiger_dir == FALSE ~ "steiger", Qpval < 0.05 ~ "outlier", TRUE ~ "none")) %>% 
+  ggplot() + 
+    geom_point(aes(x = beta.exposure, y = beta.outcome, color = status)) + 
+    theme_bw()
+```
+
+## Assessing Sample Overlap
+
+If there is sample overlap, it is a good idea to use a method that can account for it. There are two ways to determine if sample overlap is an issue. The first is to read the source papers and attempt to determine if the exposure and outcome data sets contain overlapping individuals. The second is to estimate the residual correlation due to sample overlap. If this value is statistically different from zero, there is substantial residual correlation that needs to be accounted for. There are two methods to estimate this value. Both require full genome-wide data and are a little time consuming so we won't do them here. However, we will describe how to do them.
+
+### P-value thresholding
+
+For this method, we need to perform these steps:
+
+1. Download, merge, and harmonise genome-wide data for exposure and outcome.
+2. Remove variants that have $p < 0.05$ for either exposure or outcome.
+3. Prune remaining variants for LD.
+4. Compute the correlation in z-scores for exposure and outcome in the LD-pruned, non-significant variant set.
+
+### Cross-trait LD score regression
+
+For this method, we need to perform these steps:
+
+1. Download, merge, and harmonise genome-wide data for exposure and outcome.
+2. Download LD scores for the appropriate continental population.
+3. Harmonise summary statistics with LD scores. 
+4. Perform cross-trait LD-score regression.
+
+The residual correlation parameter is estimated by the intercept of cross-trait LD-score regression. 
+
+
+I performed this method for our data sets and found no significant residual correlation between SBP and stroke or between DBP and stroke, suggesting either no or very minimal sample overlap. Since SBP and DBP are from the same individuals, there is residual correlation, estimated at 0.154 (we will use this later in the MVMR section).
+
+## Univariable MR Analysis
+
+It is a good idea to compare results from methods that make different assumptions about horizontal pleiotropy. Since accounting for horizontal pleiotropy was covered in Lecture 2, here we will only use random effects IVW regression and GRAPPLE with robust loss function. GRAPPLE should give very similar results to MR-RAPS with overdispersion, but GRAPPLE provides a plotting function to examine the distribution of residuals. Below, I am using data after Steiger filtering but did not filter on the Q-statistic. 
+
+Note that functions like `mr_wrapper` and `mr` in `TwoSampleMR` will conduct many different MR tests. These results can be interesting. However, it is good to keep in mind that high concordance between methods that make the same/similar assumptions does not strengthen our belief in the estimate. Additionally, these tests are not all equally good/reliable/robust. For example, MR Egger is notoriously imprecise (very wide confidence intervals) while remaining sensitive to many types of horizontal pleiotropy. 
+
+```{r}
+ivw_res_sbp <- sbp_stroke_full_data %>% 
+           filter(steiger_dir == TRUE) %>% 
+           with(., mr_ivw(b_exp = beta.exposure, 
+                          b_out = beta.outcome, 
+                          se_exp= se.exposure, 
+                          se_out = se.outcome))
+
+grapple_res_sbp <- sbp_stroke_full_data %>% 
+               rename(gamma_out1 = beta.outcome, 
+                      se_out1 = se.outcome, 
+                      gamma_exp1 = beta.exposure, 
+                      se_exp1 = se.exposure) %>%
+           grappleRobustEst(data = ., 
+                          loss.function = "tukey", 
+                          plot.it = TRUE)
+
+sbp_results_tab <- data.frame(method = c("IVW", "GRAPPLE"), 
+                          beta_hat = c(ivw_res_sbp$b,  grapple_res_sbp$beta.hat), 
+                          se = c(ivw_res_sbp$se, sqrt(grapple_res_sbp$beta.var)), 
+                          pval = c(ivw_res_sbp$pval, grapple_res_sbp$beta.p.value))
+sbp_results_tab
+
+```
+
+```{r}
+
+ivw_res_dbp <- dbp_stroke_full_data %>% 
+           filter(steiger_dir == TRUE) %>% 
+           with(., mr_ivw(b_exp = beta.exposure, 
+                          b_out = beta.outcome, 
+                          se_exp= se.exposure, 
+                          se_out = se.outcome))
+
+grapple_res_dbp <- dbp_stroke_full_data %>% 
+               rename(gamma_out1 = beta.outcome, 
+                      se_out1 = se.outcome, 
+                      gamma_exp1 = beta.exposure, 
+                      se_exp1 = se.exposure) %>%
+           grappleRobustEst(data = ., 
+                          loss.function = "tukey", 
+                          plot.it = TRUE)
+
+dbp_results_tab <- data.frame(method = c("IVW", "GRAPPLE"), 
+                          beta_hat = c(ivw_res_dbp$b,  grapple_res_dbp$beta.hat), 
+                          se = c(ivw_res_dbp$se, sqrt(grapple_res_dbp$beta.var)), 
+                          pval = c(ivw_res_dbp$pval, grapple_res_dbp$beta.p.value))
+dbp_results_tab
+             
+```
+
+The residual qq-plots for GRAPPLE look pretty good (with one outlier for DBP), so we don't have strong evidence that the GRAPPLE model fits the data poorly. To interpret these results, we should first verify the units of the original exposure study (in this case SBP and DBP were untransformed). Since stroke is binary with association statistics measured by logistic regression, our MR estimate is the expected increase in log odds for stroke caused by an increase in SBP/DBP of one unit. @georgakis_genetically_2020 give results per 10 systolic blood pressure units and per 5 diastolic blood pressure units, so we will do the same thing. Using the GRAPPLE results, we find an estimated causal odds ratio of 1.37 (95% CI: 1.34 to 1.40) per 10 unit increase in SBP and an estimated causal odds ratio of 1.26 (95% CI: 1.24 to 1.29) per 5 unit increase in DBP 
+
+
+## Multivariable MR Analysis
+
+If there are known heritable confounders, we can look at an MVMR analysis. In this case, we know that SBP and DBP share a large number of genetic variants, so it is more sensible to look at these together in a multivariable analysis than separately. We will also look at an analysis adjusting for BMI to resolve bias induced by adjusting for BMI in the original blood pressure GWAS. 
+
+The simplest thing to do is multivariable IVW. We need to re-extract instruments for the two exposures together so that we have a single set of LD-pruned exposures.
+
+```{r, eval = FALSE}
+## extract data
+sbp_dbp_dat <- mv_extract_exposures(id_exposure = c(sbp_id, dbp_id), pop = "EUR")
+stroke_sbp_dbp_dat <- extract_outcome_data(outcomes = stroke_id, snps = sbp_dbp_dat$SNP)
+sbpdbp_stroke_full_data <- mv_harmonise_data(exposure_dat = sbp_dbp_dat, 
+                                           outcome_dat = stroke_dbp_dat)
+```
+
+Or load the data from the course website:
+
+```{r}
+sbpdbp_stroke_full_data <- readRDS("sbpdbp_stroke_full_data.RDS")
+```
+
+```{r}
+## mv-ivw
+mvivw_res <- mv_multiple(sbpdbp_stroke_full_data)
+mvivw_res$result
+```
+
+These results show no significant effect of diastolic blood pressure! From these results, we would estimate a causal odds ratio of 1.37 (95% CI: 1.27 to 1.48) per 10 unit increase in SBP and an estimated causal odds ratio of 1.03 (95% CI: 0.97 to 1.09) per 5 unit increase in DBP.
+
+When using MVMR, it is a good idea to assess instrument strength. We can do this using the `strength_mvmr` function from the MVMR package [@sanderson_testing_2021]. 
+```{r}
+mvmr_input <- with(sbpdbp_stroke_full_data, 
+                   format_mvmr(BXGs = exposure_beta, 
+                               BYG = outcome_beta, 
+                               seBXGs = exposure_se, 
+                               seBYG = outcome_se, 
+                               RSID = rownames(exposure_beta)))
+strength_mvmr(mvmr_input)
+```
+Both of these values are under 10, so we might be concerned about weak instrument bias. 
+
+GRAPPLE can also perform MVMR and should be more robust to weak instruments than MV-IVW. It can also account for correlation due to sample overlap. Below, we create a residual correlation matrix from the estimates I obtained using cross-trait LD-score regression.
+
+```{r}
+cor_mat <- matrix(c(1, 0.154, 0, 
+                    0.154, 1, 0,
+                    0, 0, 1), nrow = 3, byrow = T)
+grapple_res_sbpdbp <- sbpdbp_stroke_full_data %>% 
+               with(., data.frame(gamma_out1 = outcome_beta, 
+                                  se_out1 = outcome_se, 
+                                  gamma_exp1 = exposure_beta[,1],
+                                  gamma_exp2 = exposure_beta[,2],
+                                  se_exp1 = exposure_se[,1], 
+                                  se_exp2 = exposure_se[,2])) %>%
+           grappleRobustEst(data = ., 
+                          loss.function = "tukey", 
+                          cor.mat = cor_mat,
+                          plot.it = TRUE)
+grapple_res_df <- data.frame(trait = c("sbp", "dbp"), 
+                             beta_hat = grapple_res_sbpdbp$beta.hat, 
+                             se = sqrt(diag(grapple_res_sbpdbp$beta.var)), 
+                             p = grapple_res_sbpdbp$beta.p.value)
+grapple_res_df
+```
+
+The GRAPPLE estimate for SBP is just a little smaller than the MV-IVW estimate. 
+
+Finally, we can include BMI to account for covariate adjustment in the blood pressure GWAS [@gilbody_multivariable_2022].
+
+```{r, eval = FALSE}
+bmi_id <- "ukb-b-19953"
+sbp_dbp_bmi_dat <- mv_extract_exposures(id_exposure = c(sbp_id, dbp_id, bmi_id), pop = "EUR")
+stroke_sbp_dbp_bmi_dat <- extract_outcome_data(outcomes = stroke_id, snps = sbp_dbp_bmi_dat$SNP)
+sbpdbpbmi_stroke_full_data <- mv_harmonise_data(exposure_dat = sbp_dbp_bmi_dat, 
+                                           outcome_dat = stroke_dbp_dat)
+```
+
+```{r}
+sbpdbpbmi_stroke_full_data <- readRDS("sbpdbpbmi_stroke_full_data.RDS")
+mvivw_res <- mv_multiple(sbpdbpbmi_stroke_full_data)
+mvivw_res$result
+
+mvmr_input <- with(sbpdbpbmi_stroke_full_data, 
+                   format_mvmr(BXGs = exposure_beta, 
+                               BYG = outcome_beta, 
+                               seBXGs = exposure_se, 
+                               seBYG = outcome_se, 
+                               RSID = rownames(exposure_beta)))
+strength_mvmr(mvmr_input)
+```
+
+The conditional F statistics for SBP and DBP are just slightly lower when accounting for BMI, so adding this trait should not increase weak instrument bias very much.
+
+```{r}
+cor_mat <- matrix(c(1, 0.154, 0, 0, 
+                    0.154, 1, 0, 0,
+                    0, 0, 1, 0, 
+                    0, 0, 0, 1), nrow = 4, byrow = T)
+grapple_res_sbpdbpbmi <- sbpdbpbmi_stroke_full_data %>% 
+               with(., data.frame(gamma_out1 = outcome_beta, 
+                                  se_out1 = outcome_se, 
+                                  gamma_exp1 = exposure_beta[,1],
+                                  gamma_exp2 = exposure_beta[,2],
+                                  gamma_exp3 = exposure_beta[,3],
+                                  se_exp1 = exposure_se[,1], 
+                                  se_exp2 = exposure_se[,2], 
+                                  se_exp3 = exposure_se[,3])) %>%
+           grappleRobustEst(data = ., 
+                          loss.function = "tukey", 
+                          cor.mat = cor_mat,
+                          plot.it = TRUE)
+grapple_res_df <- data.frame(trait = c("sbp", "dbp", "bmi"), 
+                             beta_hat = grapple_res_sbpdbpbmi$beta.hat, 
+                             se = sqrt(diag(grapple_res_sbpdbpbmi$beta.var)), 
+                             p = grapple_res_sbpdbpbmi$beta.p.value)
+grapple_res_df
+```
+After adjusting for BMI, the estimate for SBP is somewhat attenuated, which could be a result of resolving bias due covariate adjustment in the GWAS, or a result of slightly increased weak instrument bias. 
+
+## References
